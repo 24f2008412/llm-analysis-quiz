@@ -1,23 +1,36 @@
-# LLM Analysis Quiz 
+---
+title: LLM Analysis Quiz Solver
+emoji: 🧠
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+sdk_version: "1.0"
+app_file: server.js
+pinned: false
+---
 
-This repository provides a working API endpoint and solver for the LLM Analysis Quiz.
+LLM Analysis Quiz — Hugging Face Space Deployment (Docker)
+This project implements the LLM Analysis Quiz solver:
 
-## Files
-- server.js - Express endpoint that validates secret and invokes solver
-- solver/ - Puppeteer-based solver + handlers for CSV/XLSX/PDF/HTML table parsing
-- package.json, .env.example, Dockerfile, LICENSE, tests/demo-request.json
-
-## Setup
-1. Copy files into a directory.
-2. Create `.env` from `.env.example` and set SECRET.
-3. `npm install`
-4. `npm start`
-
-## Test
-Use the provided demo endpoint:
-`curl -X POST http://localhost:3000/api/quiz-webhook -H "Content-Type: application/json" -d @tests/demo-request.json`
-
-Set SECRET in .env to match the JSON secret to receive 200.
-
-## Deployment
-Deploy to Render, Heroku, or any Node hosting. Ensure SECRET env var is set and service is HTTPS.
+Express API /api/quiz-webhook receives quiz tasks
+Validates secret
+Loads the quiz page in headless Chromium (Puppeteer)
+Extracts data (HTML tables, CSV, XLSX, PDF)
+Computes numeric answers and submits back to provided submit URL
+Follows next URLs if provided
+Local development
+Copy .env.example → .env and fill SECRET (local only).
+Install: npm install
+Run: npm start
+Test with: curl -X POST http://localhost:7860/api/quiz-webhook -H "Content-Type: application/json" -d @tests/demo-request.json
+Deploy on Hugging Face Spaces (Docker)
+Create a Space: https://huggingface.co/spaces (choose docker SDK).
+Push this repo (or upload files) — must include Dockerfile.
+In Space settings → Repository secrets, add:
+SECRET=llm-analysis-quiz-secret
+NODE_ENV=production (Add OPENAI_API_KEY only if your solver uses OpenAI.)
+Space will build (uses system Chromium). Endpoint will be: https://-llm-analysis-quiz.hf.space/api/quiz-webhook
+Notes
+Do not commit .env or any keys.
+The Dockerfile installs system Chromium and prevents Puppeteer from downloading Chromium.
+Replace <your-username> and <your-email> in the Google Form and README before submission.
