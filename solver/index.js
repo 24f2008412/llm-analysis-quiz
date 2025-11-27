@@ -4,7 +4,14 @@ const handlers = require('./handlers');
 
 async function solveAndSubmit({ email, secret, url }){
   console.log('Launching headless browser for', url);
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+
+  const browser = await puppeteer.launch({
+    executablePath,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
+
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(60_000);
 
@@ -36,13 +43,10 @@ async function solveAndSubmit({ email, secret, url }){
 
     console.log('Submit result:', submitResult && submitResult.status);
 
-    // If the quiz system returns a next url, follow it (respect the 3-minute requirement)
+    // If the quiz system returns a next url, follow it (simple loop, limited)
     if (submitResult && submitResult.data && submitResult.data.url) {
-      const nextUrl = submitResult.data.url;
-      console.log('Received next url', nextUrl);
-      // A simple loop follows up to 5 sequential pages or until no next url
       let loopCount = 0;
-      let current = nextUrl;
+      let current = submitResult.data.url;
       while (current && loopCount < 5) {
         loopCount++;
         console.log('Following nextUrl:', current);
