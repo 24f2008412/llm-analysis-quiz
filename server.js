@@ -3,7 +3,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const solver = require('./solver');
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+// Use HF default port (7860) as fallback
+const PORT = process.env.PORT || 7860;
 
 app.use(bodyParser.json({ limit: '1mb' }));
 
@@ -28,13 +30,10 @@ app.post('/api/quiz-webhook', async (req, res) => {
     // Acknowledge quickly
     res.status(200).json({ status: 'accepted' });
 
-    // Solve immediately (still executed now)
-    console.log(`Accepted quiz for ${email} -> ${url}`);
-    try {
-      await solver.solveAndSubmit({ email, secret, url });
-    } catch (err) {
-      console.error('Solver error:', err);
-    }
+    // Launch solver asynchronously (do NOT block the response)
+    solver.solveAndSubmit({ email, secret, url }).catch(err => {
+      console.error('Solver error (async):', err);
+    });
 
   } catch (err) {
     console.error(err);
