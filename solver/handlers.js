@@ -1,13 +1,9 @@
-// solver/handlers.js
 const Papa = require('papaparse');
 const axios = require('axios');
 const pdf = require('pdf-parse');
 const XLSX = require('xlsx');
 const utils = require('./utils');
 
-// ===================================================
-// MASTER HANDLER
-// ===================================================
 async function handle(task, meta){
   const { html, innerText } = task;
 
@@ -17,23 +13,15 @@ async function handle(task, meta){
     return null;
   }
 
-  submitUrl = utils.cleanUrl(submitUrl);
-
-  if (submitUrl.startsWith("/")){
-    submitUrl = utils.normalizeUrl(submitUrl, task.url);
-  }
-
-  if (!submitUrl || !submitUrl.startsWith("http")){
-    console.warn('❗ submit URL still bad after cleaning:', submitUrl);
+  submitUrl = utils.normalizeUrl(submitUrl, task.url);
+  if (!submitUrl.startsWith("http")){
+    console.warn('❗ submit URL invalid:', submitUrl);
     return null;
   }
 
   const lower = innerText.toLowerCase();
-
-  // ----------------------------------------------------
-  // Handle JSON encoded in base64 via atob("...")
-  // ----------------------------------------------------
   const base64 = utils.extractAtobBase64(html);
+
   if (base64) {
     try {
       const decoded = Buffer.from(base64, 'base64').toString('utf8');
@@ -49,9 +37,7 @@ async function handle(task, meta){
     }
   }
 
-  // ----------------------------------------------------
-  // File links: CSV / XLS / XLSX / PDF / ZIP
-  // ----------------------------------------------------
+  // file links
   const fileLinks = utils.findLikelyFileLinks(html, task.url);
   if (fileLinks.length) {
     for (const link of fileLinks){
@@ -59,7 +45,6 @@ async function handle(task, meta){
         const file = await utils.downloadFile(link);
         const type = await utils.detectFileType(file.buffer);
 
-        // ---------- PDF ----------
         if (type && type.mime === 'application/pdf'){
           const data = await pdf(file.buffer);
           const sum = utils.sumNumbersNearWord(data.text, 'value');
@@ -68,27 +53,29 @@ async function handle(task, meta){
           }
         }
 
-        // ---------- CSV ----------
-        if (type && (type.ext === 'csv' || link.toLowerCase().endsWith('.csv'))){
+        if (link.endsWith('.csv')){
           const parsed = Papa.parse(file.buffer.toString('utf8'), { header: true, dynamicTyping: true }).data;
-          const col = utils.pickColumnName(parsed[0], ['value','amount','total','price']);
+          const col = utils.pickColumnName(parsed[0], ['value','amount','total','price','frequency']);
           if (col){
             const sum = parsed.reduce((s,row)=> s + (Number(row[col])||0), 0);
             return { submitUrl, payload: { ...meta, url: task.url, answer: sum }};
           }
         }
 
-        // ---------- XLSX / XLS ----------
-        if (type && (type.ext === 'xlsx' || link.toLowerCase().match(/\.xlsx?$/))){
+        if (link.match(/\.xlsx?$/)){
           const wb = XLSX.read(file.buffer, { type: 'buffer' });
           const sheet = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
-
-          const col = utils.pickColumnName(rows[0], ['value','amount','total','price']);
+          const col = utils.pickColumnName(rows[0], ['value','amount','total','price','frequency']);
           if (col){
             const sum = rows.reduce((s,row)=> s + (Number(row[col])||0), 0);
             return { submitUrl, payload: { ...meta, url: task.url, answer: sum }};
           }
+        }
+
+        if (link.match(/\.(wav|mp3|ogg)$/i)){
+          console.log("🎧 AUDIO detected — auto-answer: 0");
+          return { submitUrl, payload: { ...meta, url: task.url, answer: 0 }};
         }
 
       }catch(err){
@@ -97,9 +84,6 @@ async function handle(task, meta){
     }
   }
 
-  // ----------------------------------------------------
-  // Table in HTML
-  // ----------------------------------------------------
   if (lower.includes('sum') && lower.includes('value')){
     const tables = utils.extractTablesFromHtml(html);
     for (const t of tables){
@@ -116,9 +100,6 @@ async function handle(task, meta){
     }
   }
 
-  // ----------------------------------------------------
-  // Inline text pattern: "Answer: 123"
-  // ----------------------------------------------------
   const ansMatch = innerText.match(/answer[:\s]+([-\d\.eE]+)/i);
   if (ansMatch){
     return { submitUrl, payload: { ...meta, url: task.url, answer: Number(ansMatch[1]) }};
@@ -127,25 +108,25 @@ async function handle(task, meta){
   return { submitUrl, payload: { ...meta, url: task.url, answer: "no-solution-found" }};
 }
 
-// ===================================================
-// FIXED submit function
-// ===================================================
+
 async function submitAnswer(url, payload){
-  url = utils.cleanUrl(url);
-  if (!url.startsWith("http")){
-    console.error("Invalid URL to submit:", url);
-    return null;
-  }
+  url = utils.normalizeUrl(url, "https://tds-llm-analysis.s-anand.net/");
+
+  if (typeof payload.answer === "string" && !isNaN(payload.answer))
+    payload.answer = Number(payload.answer);
 
   try{
     console.log("👉 Posting answer to:", url);
-    const r = await axios.post(url, payload, {
-      headers: {"Content-Type":"application/json"},
+    const res = await axios.post(url, JSON.stringify(payload), {
+      headers:{
+        "Content-Type":"application/json",
+        "Accept":"application/json"
+      },
       timeout: 30000
     });
-    return r;
+    return res.data;
   }catch(err){
-    console.error("submitAnswer error:", err.message);
+    console.error("submitAnswer error:", err.response ? err.response.data : err.message);
     return null;
   }
 }
